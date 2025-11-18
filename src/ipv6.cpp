@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "main.h"
 #include "tcp.h"
+#include <WebSerial.h>
 
 const uint8_t broadcastIPv6[16] = { 0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 /* our link-local IPv6 address. Based on myMac, but with 0xFFFE in the middle, and bit 1 of MSB inverted */
@@ -261,7 +262,7 @@ void evaluateUdpPayload(void) {
         // 0x9001 SDP response message (SECC response to the EVCC)
         if (v2gptPayloadType == 0x9000) {
             // it is a SDP request from the car to the charger
-            Serial.printf("it is a SDP request from the car to the charger\n");
+            WebSerial.printf("it is a SDP request from the car to the charger\n");
             v2gptPayloadLen = (((uint32_t)udpPayload[4])<<24)  + 
                               (((uint32_t)udpPayload[5])<<16) +
                               (((uint32_t)udpPayload[6])<<8) +
@@ -271,19 +272,19 @@ void evaluateUdpPayload(void) {
                 DiscoveryReqSecurity = udpPayload[8]; // normally 0x10 for "no transport layer security". Or 0x00 for "TLS".
                 DiscoveryReqTransportProtocol = udpPayload[9]; // normally 0x00 for TCP
                 if (DiscoveryReqSecurity != 0x10) {
-                    Serial.printf("DiscoveryReqSecurity %u is not supported\n", DiscoveryReqSecurity);
+                    WebSerial.printf("DiscoveryReqSecurity %u is not supported\n", DiscoveryReqSecurity);
                 } else if (DiscoveryReqTransportProtocol != 0x00) {
-                    Serial.printf("DiscoveryReqTransportProtocol %u is not supported\n", DiscoveryReqTransportProtocol);
+                    WebSerial.printf("DiscoveryReqTransportProtocol %u is not supported\n", DiscoveryReqTransportProtocol);
                 } else {
                     // This was a valid SDP request. Let's respond, if we are the charger.
-                    Serial.printf("Ok, this was a valid SDP request. We are the SECC. Sending SDP response.\n");
+                    WebSerial.printf("Ok, this was a valid SDP request. We are the SECC. Sending SDP response.\n");
                     sendSdpResponse();
                 }
             } else {
-                Serial.printf("v2gptPayloadLen on SDP request is %u not supported\n", v2gptPayloadLen);
+                WebSerial.printf("v2gptPayloadLen on SDP request is %u not supported\n", v2gptPayloadLen);
             }
         } else {    
-            Serial.printf("v2gptPayloadType %04x not supported\n", v2gptPayloadType);
+            WebSerial.printf("v2gptPayloadType %04x not supported\n", v2gptPayloadType);
         }                  
     }
   }                
@@ -369,7 +370,7 @@ void evaluateNeighborSolicitation(void) {
     txbuffer[56] = checksum >> 8;
     txbuffer[57] = checksum & 0xFF;
     
-    Serial.printf("transmitting Neighbor Advertisement\n");
+    WebSerial.printf("transmitting Neighbor Advertisement\n");
     /* Length of the NeighborAdvertisement = 86*/
     qcaspi_write_burst(txbuffer, 86);
 }
@@ -380,9 +381,9 @@ void IPv6Manager(uint16_t rxbytes) {
     uint16_t nextheader; 
     uint8_t icmpv6type; 
 
-    Serial.printf("\n[RX] ");
-    for (x=0; x<rxbytes; x++) Serial.printf("%02x",rxbuffer[x]);
-    Serial.printf("\n");
+    WebSerial.printf("\n[RX] ");
+    for (x=0; x<rxbytes; x++) WebSerial.printf("%02x",rxbuffer[x]);
+    WebSerial.printf("\n");
 
     //# The evaluation function for received ipv6 packages.
   
@@ -391,7 +392,7 @@ void IPv6Manager(uint16_t rxbytes) {
         memcpy(sourceIp, rxbuffer+22, 16);
         nextheader = rxbuffer[20];
         if (nextheader == 0x11) { //  it is an UDP frame
-            Serial.printf("Its a UDP.\n");
+            WebSerial.printf("Its a UDP.\n");
             sourceport = rxbuffer[54]*256 + rxbuffer[55];
             destinationport = rxbuffer[56]*256 + rxbuffer[57];
             udplen = rxbuffer[58]*256 + rxbuffer[59];
@@ -400,7 +401,7 @@ void IPv6Manager(uint16_t rxbytes) {
             //# udplen is including 8 bytes header at the begin
             if (udplen>UDP_PAYLOAD_LEN) {
                 /* ignore long UDP */
-                Serial.printf("Ignoring too long UDP\n");
+                WebSerial.printf("Ignoring too long UDP\n");
                 return;
             }
             if (udplen>8) {
@@ -412,14 +413,14 @@ void IPv6Manager(uint16_t rxbytes) {
             }                      
         }
         if (nextheader == 0x06) { // # it is an TCP frame
-            Serial.printf("TCP received\n");
+            WebSerial.printf("TCP received\n");
             evaluateTcpPacket();
         }
         if (nextheader == NEXT_ICMPv6) { // it is an ICMPv6 (NeighborSolicitation etc) frame
-            Serial.printf("ICMPv6 received\n");
+            WebSerial.printf("ICMPv6 received\n");
             icmpv6type = rxbuffer[54];
             if (icmpv6type == 0x87) { /* Neighbor Solicitation */
-                Serial.printf("Neighbor Solicitation received\n");
+                WebSerial.printf("Neighbor Solicitation received\n");
                 evaluateNeighborSolicitation();
             }
         }

@@ -3,6 +3,7 @@
 #include "ipv6.h"
 #include "tcp.h"
 #include "src/exi/projectExiConnector.h"
+#include <WebSerial.h>
 
 /* Todo: implement a retry strategy, to cover the situation that single packets are lost on the way. */
 
@@ -81,7 +82,7 @@ void tcp_transmit(void) {
       tcp_prepareTcpHeader(TCP_FLAG_PSH + TCP_FLAG_ACK); /* data packets are always sent with flags PUSH and ACK. */
       tcp_packRequestIntoIp();
     } else {
-      Serial.printf("Error: tcpPayload and header do not fit into TcpTransmitPacket.\n");
+      WebSerial.printf("Error: tcpPayload and header do not fit into TcpTransmitPacket.\n");
     }      
   }  
 }
@@ -109,7 +110,7 @@ void addV2GTPHeaderAndTransmit(const uint8_t *exiBuffer, uint8_t exiBufferLen) {
         //showAsHex(tcpPayload, tcpPayloadLen, "tcpPayload");
         tcp_transmit();
     } else {
-        Serial.printf("Error: EXI does not fit into tcpPayload.\n");
+        WebSerial.printf("Error: EXI does not fit into tcpPayload.\n");
     }
 }
 
@@ -132,11 +133,11 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (aphsDoc.supportedAppProtocolReq_isUsed) {
         
-            Serial.printf("SupportedApplicationProtocolRequest\n");
+            WebSerial.printf("SupportedApplicationProtocolRequest\n");
             // process data when no errors occured during decoding
             if (g_errn == 0) {
                 arrayLen = aphsDoc.supportedAppProtocolReq.AppProtocol.arrayLen;
-                Serial.printf("The car supports %u schemas.\n", arrayLen);
+                WebSerial.printf("The car supports %u schemas.\n", arrayLen);
             
                 // check all schemas for DIN
                 for(n=0; n<arrayLen; n++) {
@@ -146,10 +147,10 @@ void decodeV2GTP(void) {
                     for (i=0; i< NamespaceLen; i++) {
                         strNamespace[i] = aphsDoc.supportedAppProtocolReq.AppProtocol.array[n].ProtocolNamespace.characters[i];    
                     }
-                    Serial.printf("strNameSpace %s SchemaID: %u\n", strNamespace, SchemaID);
+                    WebSerial.printf("strNameSpace %s SchemaID: %u\n", strNamespace, SchemaID);
 
                     if (strstr((const char*)strNamespace, ":din:70121:") != NULL) {
-                        Serial.printf("Detected DIN\n");
+                        WebSerial.printf("Detected DIN\n");
                         projectExiConnector_encode_appHandExiDocument(SchemaID); // test
                         // Send supportedAppProtocolRes to EV
                         addV2GTPHeaderAndTransmit(global_streamEnc.data, global_streamEncPos);
@@ -164,20 +165,20 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (dinDocDec.V2G_Message.Body.SessionSetupReq_isUsed) {
 
-            Serial.printf("SessionSetupReqest\n");
+            WebSerial.printf("SessionSetupReqest\n");
 
             //n = dinDocDec.V2G_Message.Header.SessionID.bytesLen;
             //for (i=0; i< n; i++) {
-            //    Serial.printf("%02x", dinDocDec.V2G_Message.Header.SessionID.bytes[i] );
+            //    WebSerial.printf("%02x", dinDocDec.V2G_Message.Header.SessionID.bytes[i] );
             //}
             n = dinDocDec.V2G_Message.Body.SessionSetupReq.EVCCID.bytesLen;
             if (n>6) n=6;       // out of range check
-            Serial.printf("EVCCID=");
+            WebSerial.printf("EVCCID=");
             for (i=0; i<n; i++) {
                 EVCCID[i]= dinDocDec.V2G_Message.Body.SessionSetupReq.EVCCID.bytes[i];
-                Serial.printf("%02x", EVCCID[i] );
+                WebSerial.printf("%02x", EVCCID[i] );
             }
-            Serial.printf("\n");
+            WebSerial.printf("\n");
             
             sessionId[0] = 1;   // our SessionId is set up here, and used by _prepare_DinExiDocument
             sessionId[1] = 2;   // This SessionID will be used by the EV in future communication
@@ -209,11 +210,11 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (dinDocDec.V2G_Message.Body.ServiceDiscoveryReq_isUsed) {
 
-            Serial.printf("ServiceDiscoveryReqest\n");
+            WebSerial.printf("ServiceDiscoveryReqest\n");
             n = dinDocDec.V2G_Message.Header.SessionID.bytesLen;
-            Serial.printf("SessionID:");
-            for (i=0; i<n; i++) Serial.printf("%02x", dinDocDec.V2G_Message.Header.SessionID.bytes[i] );
-            Serial.printf("\n");
+            WebSerial.printf("SessionID:");
+            for (i=0; i<n; i++) WebSerial.printf("%02x", dinDocDec.V2G_Message.Header.SessionID.bytes[i] );
+            WebSerial.printf("\n");
             
             // Now prepare the 'ServiceDiscoveryResponse' message to send back to the EV
             projectExiConnector_prepare_DinExiDocument();
@@ -258,10 +259,10 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (dinDocDec.V2G_Message.Body.ServicePaymentSelectionReq_isUsed) {
 
-            Serial.printf("ServicePaymentSelectionReqest\n");
+            WebSerial.printf("ServicePaymentSelectionReqest\n");
 
             if (dinDocDec.V2G_Message.Body.ServicePaymentSelectionReq.SelectedPaymentOption == dinpaymentOptionType_ExternalPayment) {
-                Serial.printf("OK. External Payment Selected\n");
+                WebSerial.printf("OK. External Payment Selected\n");
 
                 // Now prepare the 'ServicePaymentSelectionResponse' message to send back to the EV
                 projectExiConnector_prepare_DinExiDocument();
@@ -287,7 +288,7 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (dinDocDec.V2G_Message.Body.ContractAuthenticationReq_isUsed) {
 
-            Serial.printf("ContractAuthenticationRequest\n");
+            WebSerial.printf("ContractAuthenticationRequest\n");
 
             // Now prepare the 'ContractAuthenticationResponse' message to send back to the EV
             projectExiConnector_prepare_DinExiDocument();
@@ -313,12 +314,12 @@ void decodeV2GTP(void) {
         // Check if we have received the correct message
         if (dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq_isUsed) {
 
-            Serial.printf("ChargeParameterDiscoveryRequest\n");
+            WebSerial.printf("ChargeParameterDiscoveryRequest\n");
 
             // Read the SOC from the EVRESSOC data
             EVSOC = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVRESSSOC;
 
-            Serial.printf("Current SoC %d%\n", EVSOC);
+            WebSerial.printf("Current SoC %d%\n", EVSOC);
 
             // Now prepare the 'ChargeParameterDiscoveryResponse' message to send back to the EV
             projectExiConnector_prepare_DinExiDocument();
@@ -356,8 +357,8 @@ void tcp_packRequestIntoEthernet(void) {
     memcpy(txbuffer+14, TcpIpRequest, length);
     
     //Serial.print("[TX] ");
-    //for(int x=0; x<length; x++) Serial.printf("%02x",txbuffer[x]);
-    //Serial.printf("\n\n");
+    //for(int x=0; x<length; x++) WebSerial.printf("%02x",txbuffer[x]);
+    //WebSerial.printf("\n\n");
 
     qcaspi_write_burst(txbuffer, length);
 }
@@ -448,12 +449,12 @@ void tcp_prepareTcpHeader(uint8_t tcpFlag) {
     TcpTransmitPacket[16] = (uint8_t)(checksum >> 8);
     TcpTransmitPacket[17] = (uint8_t)(checksum);
 
-    //Serial.printf("Source:%u Dest:%u Seqnr:%08x Acknr:%08x\n", seccPort, evccTcpPort, TcpSeqNr, TcpAckNr);  
+    //WebSerial.printf("Source:%u Dest:%u Seqnr:%08x Acknr:%08x\n", seccPort, evccTcpPort, TcpSeqNr, TcpAckNr);  
 }
 
 
 void tcp_sendFirstAck(void) {
-    Serial.printf("[TCP] sending first ACK\n");
+    WebSerial.printf("[TCP] sending first ACK\n");
     tcpHeaderLen = 20;
     tcpPayloadLen = 0;
     tcp_prepareTcpHeader(TCP_FLAG_ACK | TCP_FLAG_SYN);	
@@ -461,7 +462,7 @@ void tcp_sendFirstAck(void) {
 }
 
 void tcp_sendAck(void) {
-   Serial.printf("[TCP] sending ACK\n");
+   WebSerial.printf("[TCP] sending ACK\n");
    tcpHeaderLen = 20; /* 20 bytes normal header, no options */
    tcpPayloadLen = 0;   
    tcp_prepareTcpHeader(TCP_FLAG_ACK);	
@@ -484,11 +485,11 @@ void evaluateTcpPacket(void) {
     } else {
         tmpPayloadLen = 0; /* no TCP payload data */
     } 
-    //Serial.printf("pLen=%u, hdrLen=%u, Payload=%u\n", pLen, hdrLen, tmpPayloadLen);  
+    //WebSerial.printf("pLen=%u, hdrLen=%u, Payload=%u\n", pLen, hdrLen, tmpPayloadLen);  
     SourcePort = rxbuffer[54]*256 +  rxbuffer[55];
     DestinationPort = rxbuffer[56]*256 +  rxbuffer[57];
     if (DestinationPort != 15118) {
-        Serial.printf("[TCP] wrong port.\n");
+        WebSerial.printf("[TCP] wrong port.\n");
         return; /* wrong port */
     }
     //  tcpActivityTimer=TCP_ACTIVITY_TIMER_START;
@@ -502,7 +503,7 @@ void evaluateTcpPacket(void) {
             (((uint32_t)rxbuffer[63])<<16) +
             (((uint32_t)rxbuffer[64])<<8) +
             (((uint32_t)rxbuffer[65]));
-    //Serial.printf("Source:%u Dest:%u Seqnr:%08x Acknr:%08x flags:%02x\n", SourcePort, DestinationPort, remoteSeqNr, remoteAckNr, flags);        
+    //WebSerial.printf("Source:%u Dest:%u Seqnr:%08x Acknr:%08x flags:%02x\n", SourcePort, DestinationPort, remoteSeqNr, remoteAckNr, flags);        
     flags = rxbuffer[67];
     if (flags == TCP_FLAG_SYN) { /* This is the connection setup reqest from the EV. */
         if (tcpState == TCP_STATE_CLOSED) {
@@ -516,7 +517,7 @@ void evaluateTcpPacket(void) {
     }    
     if (flags == TCP_FLAG_ACK && tcpState == TCP_STATE_SYN_ACK) {
         if (remoteAckNr == (TcpSeqNr + 1) ) {
-            Serial.printf("-------------- TCP connection established ---------------\n\n");
+            WebSerial.printf("-------------- TCP connection established ---------------\n\n");
             tcpState = TCP_STATE_ESTABLISHED;
         }
         return;
@@ -524,7 +525,7 @@ void evaluateTcpPacket(void) {
     /* It is no connection setup. We can have the following situations here: */
     if (tcpState != TCP_STATE_ESTABLISHED) {
         /* received something while the connection is closed. Just ignore it. */
-        Serial.printf("[TCP] ignore, not connected.\n");
+        WebSerial.printf("[TCP] ignore, not connected.\n");
         return;    
     } 
 
@@ -547,7 +548,7 @@ void evaluateTcpPacket(void) {
     }
 
    if (flags & TCP_FLAG_ACK) {
-       Serial.printf("This was an ACK\n\n");
+       WebSerial.printf("This was an ACK\n\n");
        //nTcpPacketsReceived+=1000;
        TcpSeqNr = remoteAckNr; /* The sequence number of our next transmit packet is given by the received ACK number. */      
    }

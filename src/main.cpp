@@ -28,13 +28,20 @@
 // Information on setting up the SLAC communication can be found in ISO 15118-3:2016
 //
 
-
 #include <Arduino.h>
 #include <SPI.h>
+
+#include <DNSServer.h> 
+#include <WebServer.h>
+#include <WiFiManager.h>
+#include <WebSerial.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
 #include "main.h"
 #include "ipv6.h"
 
+AsyncWebServer server(80);
 
 uint8_t txbuffer[3164], rxbuffer[3164];
 uint8_t modem_state;
@@ -127,11 +134,11 @@ void qcaspi_write_burst(uint8_t *src, uint32_t len) {
     total_len = len + 10;
     // Write nr of bytes to write to SPI_REG_BFR_SIZE
     qcaspi_write_register(SPI_REG_BFR_SIZE, total_len);
-    //Serial.printf("Write buffer bytes sent: %u\n", total_len);
+    //WebSerial.printf("Write buffer bytes sent: %u\n", total_len);
 
 //    Serial.print("[TX] ");
-//    for(int x=0; x< len; x++) Serial.printf("%02x ",src[x]);
-//    Serial.printf("\n");
+//    for(int x=0; x< len; x++) WebSerial.printf("%02x ",src[x]);
+//    WebSerial.printf("\n");
     
     digitalWrite(PIN_QCA700X_CS, LOW);
     SPI.transfer16(QCA7K_SPI_WRITE | QCA7K_SPI_EXTERNAL);      // Write External
@@ -206,7 +213,7 @@ uint16_t getFrameType() {
 
 void ModemReset() {
     uint16_t reg16;
-    Serial.printf("Reset QCA700X Modem. ");
+    WebSerial.printf("Reset QCA700X Modem. ");
     reg16 = qcaspi_read_register16(SPI_REG_SPI_CONFIG);
     reg16 = reg16 | SPI_INT_CPU_ON;     // Reset QCA700X
     qcaspi_write_register(SPI_REG_SPI_CONFIG, reg16);
@@ -375,20 +382,20 @@ void SlacManager(uint16_t rxbytes) {
     mnt = getManagementMessageType();
   
   //  Serial.print("[RX] ");
-  //  for (x=0; x<rxbytes; x++) Serial.printf("%02x ",rxbuffer[x]);
-  //  Serial.printf("\n");
+  //  for (x=0; x<rxbytes; x++) WebSerial.printf("%02x ",rxbuffer[x]);
+  //  WebSerial.printf("\n");
 
     if (mnt == (CM_SET_KEY + MMTYPE_CNF)) {
-        Serial.printf("received SET_KEY.CNF\n");
+        WebSerial.printf("received SET_KEY.CNF\n");
         if (rxbuffer[19] == 0x01) {
             modem_state = MODEM_CONFIGURED;
             // copy MAC from the EVSE modem to myModemMac. This MAC is not used for communication.
             memcpy(myModemMac, rxbuffer+6, 6);
-            Serial.printf("NMK set\n");
-        } else Serial.printf("NMK -NOT- set\n");
+            WebSerial.printf("NMK set\n");
+        } else WebSerial.printf("NMK -NOT- set\n");
 
     } else if (mnt == (CM_SLAC_PARAM + MMTYPE_REQ)) {
-        Serial.printf("received CM_SLAC_PARAM.REQ\n");
+        WebSerial.printf("received CM_SLAC_PARAM.REQ\n");
         // We received a SLAC_PARAM request from the PEV. This is the initiation of a SLAC procedure.
         // We extract the pev MAC from it.
         memcpy(pevMac, rxbuffer+6, 6);
@@ -398,43 +405,43 @@ void SlacManager(uint16_t rxbytes) {
         composeSlacParamCnf();
         qcaspi_write_burst(txbuffer, 60); // Send data to modem
         modem_state = SLAC_PARAM_CNF;
-        Serial.printf("transmitting CM_SLAC_PARAM.CNF\n");
+        WebSerial.printf("transmitting CM_SLAC_PARAM.CNF\n");
 
     } else if (mnt == (CM_START_ATTEN_CHAR + MMTYPE_IND) && modem_state == SLAC_PARAM_CNF) {
-        Serial.printf("received CM_START_ATTEN_CHAR.IND\n");
+        WebSerial.printf("received CM_START_ATTEN_CHAR.IND\n");
         SoundsTimer = millis(); // start timer
         memset(AvgACVar, 0x00, 58); // reset averages.
         ReceivedSounds = 0;
         modem_state = MNBC_SOUND;
 
     } else if (mnt == (CM_MNBC_SOUND + MMTYPE_IND) && modem_state == MNBC_SOUND) { 
-        Serial.printf("received CM_MNBC_SOUND.IND\n");
+        WebSerial.printf("received CM_MNBC_SOUND.IND\n");
         ReceivedSounds++;
 
     } else if (mnt == (CM_ATTEN_PROFILE + MMTYPE_IND) && modem_state == MNBC_SOUND) { 
-        Serial.printf("received CM_ATTEN_PROFILE.IND\n");
+        WebSerial.printf("received CM_ATTEN_PROFILE.IND\n");
         for (x=0; x<58; x++) AvgACVar[x] += rxbuffer[27+x];
       
         if (ReceivedSounds == 10) {
-            Serial.printf("Start Average Calculation\n");
+            WebSerial.printf("Start Average Calculation\n");
             for (x=0; x<58; x++) AvgACVar[x] = AvgACVar[x] / ReceivedSounds;
         }  
 
     } else if (mnt == (CM_ATTEN_CHAR + MMTYPE_RSP) && modem_state == ATTEN_CHAR_IND) { 
-        Serial.printf("received CM_ATTEN_CHAR.RSP\n");
+        WebSerial.printf("received CM_ATTEN_CHAR.RSP\n");
         // verify pevMac, RunID, and succesful Slac fields
         if (memcmp(pevMac, rxbuffer+21, 6) == 0 && memcmp(pevRunId, rxbuffer+27, 8) == 0 && rxbuffer[69] == 0) {
-            Serial.printf("Successful SLAC process\n");
+            WebSerial.printf("Successful SLAC process\n");
             modem_state = ATTEN_CHAR_RSP;
         } else modem_state = MODEM_CONFIGURED; // probably not correct, should ignore data, and retransmit CM_ATTEN_CHAR.IND
 
     } else if (mnt == (CM_SLAC_MATCH + MMTYPE_REQ) && modem_state == ATTEN_CHAR_RSP) { 
-        Serial.printf("received CM_SLAC_MATCH.REQ\n"); 
+        WebSerial.printf("received CM_SLAC_MATCH.REQ\n"); 
         // Verify pevMac, RunID and MVFLength fields
         if (memcmp(pevMac, rxbuffer+40, 6) == 0 && memcmp(pevRunId, rxbuffer+69, 8) == 0 && rxbuffer[21] == 0x3e) {
             composeSlacMatchCnf();
             qcaspi_write_burst(txbuffer, 109); // Send data to modem
-            Serial.printf("transmitting CM_SLAC_MATCH.CNF\n");
+            WebSerial.printf("transmitting CM_SLAC_MATCH.CNF\n");
             modem_state = MODEM_GET_SW_REQ;
         }
 
@@ -445,7 +452,7 @@ void SlacManager(uint16_t rxbytes) {
             // Store the Pev modem MAC, as long as it is not random, we can use it for identifying the EV (Autocharge / Plug N Charge)
             memcpy(pevModemMac, rxbuffer+6, 6);
         }
-        Serial.printf("received GET_SW.CNF\n");
+        WebSerial.printf("received GET_SW.CNF\n");
         ModemsFound++;
     }
 }
@@ -467,10 +474,10 @@ void Timer20ms(void * parameter) {
         switch(modem_state) {
           
             case MODEM_POWERUP:
-                Serial.printf("Searching for local modem.. ");
+                WebSerial.printf("Searching for local modem.. ");
                 reg16 = qcaspi_read_register16(SPI_REG_SIGNATURE);
                 if (reg16 == QCASPI_GOOD_SIGNATURE) {
-                    Serial.printf("QCA700X modem found\n");
+                    WebSerial.printf("QCA700X modem found\n");
                     modem_state = MODEM_WRITESPACE;
                 }    
                 break;
@@ -478,7 +485,7 @@ void Timer20ms(void * parameter) {
             case MODEM_WRITESPACE:
                 reg16 = qcaspi_read_register16(SPI_REG_WRBUF_SPC_AVA);
                 if (reg16 == QCA7K_BUFFER_SIZE) {
-                    Serial.printf("QCA700X write space ok\n"); 
+                    WebSerial.printf("QCA700X write space ok\n"); 
                     modem_state = MODEM_CM_SET_KEY_REQ;
                 }  
                 break;
@@ -487,14 +494,14 @@ void Timer20ms(void * parameter) {
                 randomizeNmk();       // randomize Nmk, so we start with a new key.
                 composeSetKey();      // set up buffer with CM_SET_KEY.REQ request data
                 qcaspi_write_burst(txbuffer, 60);    // write minimal 60 bytes according to an4_rev5.pdf
-                Serial.printf("transmitting SET_KEY.REQ, to configure the EVSE modem with random NMK\n"); 
+                WebSerial.printf("transmitting SET_KEY.REQ, to configure the EVSE modem with random NMK\n"); 
                 modem_state = MODEM_CM_SET_KEY_CNF;
                 break;
 
             case MODEM_GET_SW_REQ:
                 composeGetSwReq();
                 qcaspi_write_burst(txbuffer, 60); // Send data to modem
-                Serial.printf("Modem Search..\n");
+                WebSerial.printf("Modem Search..\n");
                 ModemsFound = 0; 
                 ModemSearchTimer = millis();        // start timer
                 modem_state = MODEM_WAIT_SW;
@@ -512,7 +519,7 @@ void Timer20ms(void * parameter) {
                     if (rxbuffer[4] == 0xaa && rxbuffer[5] == 0xaa && rxbuffer[6] == 0xaa && rxbuffer[7] == 0xaa && rxbytes >= 60) {
                         // now remove the header, and footer.
                         memcpy(rxbuffer, rxbuffer+12, reg16-14);
-                        //Serial.printf("available: %u rxbuffer bytes: %u\n",reg16, rxbytes);
+                        //WebSerial.printf("available: %u rxbuffer bytes: %u\n",reg16, rxbytes);
                     
                         FrameType = getFrameType();
                         if (FrameType == FRAME_HOMEPLUG) SlacManager(rxbytes);
@@ -526,7 +533,7 @@ void Timer20ms(void * parameter) {
                         } else reg16 = 0;
                       
                     } else {
-                        Serial.printf("Invalid data!\n");
+                        WebSerial.printf("Invalid data!\n");
                         ModemReset();
                         modem_state = MODEM_POWERUP;
                     }  
@@ -536,28 +543,28 @@ void Timer20ms(void * parameter) {
 
         // Did the Sound timer expire?
         if (modem_state == MNBC_SOUND && (SoundsTimer + 600) < millis() ) {
-            Serial.printf("SOUND timer expired\n");
+            WebSerial.printf("SOUND timer expired\n");
             // Send CM_ATTEN_CHAR_IND, even if no Sounds were received.
             composeAttenCharInd();
             qcaspi_write_burst(txbuffer, 129); // Send data to modem
             modem_state = ATTEN_CHAR_IND;
-            Serial.printf("transmitting CM_ATTEN_CHAR.IND\n");
+            WebSerial.printf("transmitting CM_ATTEN_CHAR.IND\n");
         }
 
         if (modem_state == MODEM_WAIT_SW && (ModemSearchTimer + 1000) < millis() ) {
-            Serial.printf("MODEM timer expired. ");
+            WebSerial.printf("MODEM timer expired. ");
             if (ModemsFound >= 2) {
-                Serial.printf("Found %u modems. Private network between EVSE and PEV established\n", ModemsFound); 
+                WebSerial.printf("Found %u modems. Private network between EVSE and PEV established\n", ModemsFound); 
                 
-                Serial.printf("PEV MAC: ");
-                for(x=0; x<6 ;x++) Serial.printf("%02x", pevMac[x]);
-                Serial.printf(" PEV modem MAC: ");
-                for(x=0; x<6 ;x++) Serial.printf("%02x", pevModemMac[x]);
-                Serial.printf("\n");
+                WebSerial.printf("PEV MAC: ");
+                for(x=0; x<6 ;x++) WebSerial.printf("%02x", pevMac[x]);
+                WebSerial.printf(" PEV modem MAC: ");
+                for(x=0; x<6 ;x++) WebSerial.printf("%02x", pevModemMac[x]);
+                WebSerial.printf("\n");
 
                 modem_state = MODEM_LINK_READY;
             } else {
-                Serial.printf("(re)transmitting MODEM_GET_SW.REQ\n");
+                WebSerial.printf("(re)transmitting MODEM_GET_SW.REQ\n");
                 modem_state = MODEM_GET_SW_REQ;
             } 
         }
@@ -567,7 +574,28 @@ void Timer20ms(void * parameter) {
         vTaskDelay(20 / portTICK_PERIOD_MS);
 
     } // while(1)
-}    
+}  
+
+void wifi_setup_manager() {
+    WiFiManager wm;
+    
+    // Set up the Serial output for better debugging during configuration
+    Serial.println("\n[WiFiManager] Starting Wi-Fi auto-connect or configuration portal...");
+    
+    // AutoConnect will try to connect to previous Wi-Fi credentials stored in flash.
+    // If it fails, it sets up an Access Point (AP) named "SmartEVSE-PLC".
+    if (!wm.autoConnect("SmartEVSE-PLC")) {
+        Serial.println("[WiFiManager] Connection failed. Restarting...");
+        // If Wi-Fi configuration failed, restart the ESP32 to try again
+        delay(3000);
+        ESP.restart();
+    } 
+
+    // If we reach this point, the connection was successful
+    Serial.println("[WiFiManager] Successfully connected to Wi-Fi!");
+    Serial.print("[WiFiManager] IP Address: ");
+    Serial.println(WiFi.localIP());
+}
 
 
 void setup() {
@@ -589,6 +617,11 @@ void setup() {
     Serial.begin();
     Serial.printf("\npowerup\n");
 
+    wifi_setup_manager();
+
+    WebSerial.begin(&server, "/webserial");
+    server.begin();
+    
     // Create Task 20ms Timer
     xTaskCreate(
         Timer20ms,      // Function that should be called
@@ -609,11 +642,11 @@ void setup() {
 
 void loop() {
 
-  // Serial.printf("Total heap: %u\n", ESP.getHeapSize());
-  //  Serial.printf("Free heap: %u\n", ESP.getFreeHeap());
-  //  Serial.printf("Flash Size: %u\n", ESP.getFlashChipSize());
-  //  Serial.printf("Total PSRAM: %u\n", ESP.getPsramSize());
-  //  Serial.printf("Free PSRAM: %u\n", ESP.getFreePsram());
+  // WebSerial.printf("Total heap: %u\n", ESP.getHeapSize());
+  //  WebSerial.printf("Free heap: %u\n", ESP.getFreeHeap());
+  //  WebSerial.printf("Flash Size: %u\n", ESP.getFlashChipSize());
+  //  WebSerial.printf("Total PSRAM: %u\n", ESP.getPsramSize());
+  //  WebSerial.printf("Free PSRAM: %u\n", ESP.getFreePsram());
 
     delay(1000);
 }
