@@ -54,6 +54,8 @@
 #define MODEM_WAIT_SW 110
 #define MODEM_LINK_READY 120
 
+#define MODEM_V2G_INIT 121
+
 
 /*====================================================================*
  *   SLAC commands

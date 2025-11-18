@@ -30,6 +30,7 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include <Preferences.h>
 
 #include <DNSServer.h> 
 #include <WebServer.h>
@@ -37,11 +38,25 @@
 #include <WebSerial.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <HTTPClient.h>
+
+// Key for stored preferences
+const char* PREF_KEY = "secc_config"; 
+const char* URL_KEY = "soc_url";
+
+// Global variable to track the last time the 20ms logic was run
+unsigned long lastExecutionTime = 0;
+const int EXECUTION_INTERVAL_MS = 20; // 20 milliseconds
+
+// Global variable to hold the stored URL
+String soc_callback_url = "";
 
 #include "main.h"
 #include "ipv6.h"
 
+// --- GLOBAL VARIABLES ---
 AsyncWebServer server(80);
+Preferences preferences;
 
 uint8_t txbuffer[3164], rxbuffer[3164];
 uint8_t modem_state;
@@ -104,6 +119,13 @@ uint16_t qcaspi_read_register16(uint16_t reg) {
     digitalWrite(PIN_QCA700X_CS, HIGH);
 
     return rx_data;
+}
+
+String macArrayToString(const uint8_t mac[6]) {
+    char macStr[13]; // 6 bytes * 2 hex chars + null terminator
+    sprintf(macStr, "%02x%02x%02x%02x%02x%02x", 
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return String(macStr);
 }
 
 void qcaspi_write_register(uint16_t reg, uint16_t value) {
@@ -457,7 +479,40 @@ void SlacManager(uint16_t rxbytes) {
     }
 }
 
+void sendSocCallback(float current_soc, float full_soc, float energy_capacity, float energy_request, const String& evccid) {
+    if (WiFi.status() != WL_CONNECTED || soc_callback_url.length() == 0) {
+        WebSerial.println("WiFi not connected or Callback URL not set. Skipping SOC callback.");
+        return;
+    }
 
+    // Construct the query parameters string exactly as in pyPLC
+    String query = "?current_soc=" + String(current_soc, 1);
+    query += "&full_soc=" + String(full_soc, 1);
+    query += "&energy_capacity=" + String(energy_capacity, 1);
+    query += "&energy_request=" + String(energy_request, 1);
+    query += "&evccid=" + evccid;
+
+    // Combine the base URL and the query string
+    String fullUrl = soc_callback_url + query;
+
+    HTTPClient http;
+    http.begin(fullUrl);
+
+    WebSerial.printf("Sending SOC Callback (GET) to: %s\n", fullUrl.c_str());
+    
+    // The pyPLC code suggests a GET request using query parameters
+    int httpResponseCode = http.GET(); 
+
+    // Handle the response (Error checking)
+    if (httpResponseCode > 0) {
+        WebSerial.printf("SOC Callback successful. HTTP Code: %d\n", httpResponseCode);
+        WebSerial.println("Server Response: " + http.getString());
+    } else {
+        WebSerial.printf("SOC Callback error: %d - %s\n", httpResponseCode, http.errorToString(httpResponseCode).c_str());
+    }
+
+    http.end();
+}
 
 
 // Task
@@ -563,6 +618,21 @@ void Timer20ms(void * parameter) {
                 WebSerial.printf("\n");
 
                 modem_state = MODEM_LINK_READY;
+
+                WebSerial.println("Initial SOC Callback triggered.");
+
+                String evccid_str = macArrayToString(pevMac);
+                
+                sendSocCallback(
+                    (float)EVSOC,        
+                    0.0,                 
+                    0.0,                 
+                    0.0,                 
+                    evccid_str           
+                );
+                
+                // Prehod v naslednje stanje V2G (pomembno za preprečitev ponovnih klicev)
+                modem_state = MODEM_V2G_INIT; // To stanje morate definirati v main.h
             } else {
                 WebSerial.printf("(re)transmitting MODEM_GET_SW.REQ\n");
                 modem_state = MODEM_GET_SW_REQ;
@@ -597,6 +667,46 @@ void wifi_setup_manager() {
     Serial.println(WiFi.localIP());
 }
 
+void loadConfiguration() {
+    preferences.begin(PREF_KEY, false);
+    soc_callback_url = preferences.getString(URL_KEY, "");
+    preferences.end();
+
+    if (soc_callback_url.length() > 0) {
+        WebSerial.printf("Loaded SOC Callback URL: %s\n", soc_callback_url.c_str());
+    } else {
+        WebSerial.println("No SOC Callback URL configured yet.");
+    }
+}
+
+
+void saveConfiguration(const String& url) {
+    preferences.begin(PREF_KEY, false);
+    preferences.putString(URL_KEY, url);
+    preferences.end();
+    soc_callback_url = url;
+    WebSerial.printf("New SOC Callback URL saved: %s\n", soc_callback_url.c_str());
+}
+
+void handleConfigPage(AsyncWebServerRequest *request) {
+    String html = "<!DOCTYPE html><html><head><title>EVSE Config</title>";
+    html += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">";
+    html += "<style>body{font-family:Arial;} input[type=text], button {padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box;} button {background-color: #4CAF50; color: white; border: none; cursor: pointer;} .current{color:#007bff; font-weight: bold;}</style>";
+    html += "</head><body>";
+    
+    html += "<h2>SECC to SmartEVSE Callback Configuration</h2>";
+    html += "<p>Current IP: <span class=\"current\">" + WiFi.localIP().toString() + "</span></p>";
+    html += "<p>Current URL: <span class=\"current\">" + soc_callback_url + "</span></p>";
+    
+    html += "<form method='POST' action='/save'>";
+    html += "Callback URL (SmartEVSE/pyPLC):<br>";
+    html += "<input type='text' name='url' value='" + soc_callback_url + "' placeholder='e.g., http://192.168.1.100/ev_state'><br>";
+    html += "<button type='submit'>Save Configuration</button>";
+    html += "</form>";
+    
+    html += "</body></html>";
+    request->send(200, "text/html", html);
+}
 
 void setup() {
 
@@ -619,8 +729,26 @@ void setup() {
 
     wifi_setup_manager();
 
+    loadConfiguration();
+
+    if (WiFi.status() == WL_CONNECTED) {
+        server.on("/config", HTTP_GET, handleConfigPage);
+        server.on("/save", HTTP_POST, 
+            [](AsyncWebServerRequest *request){ 
+                if (request->hasArg("url")) {
+                    String newUrl = request->arg("url");
+                    saveConfiguration(newUrl); // Funkcija, ki shrani URL
+                    request->redirect("/config"); // Preusmeritev
+                } else {
+                    request->send(400, "text/plain", "Missing 'url' parameter.");
+                }
+            }
+        ); 
+    }
     WebSerial.begin(&server, "/webserial");
-    server.begin();
+
+    server.begin(); 
+    WebSerial.println("Web server started on port 80.");
     
     // Create Task 20ms Timer
     xTaskCreate(
@@ -642,11 +770,5 @@ void setup() {
 
 void loop() {
 
-  // WebSerial.printf("Total heap: %u\n", ESP.getHeapSize());
-  //  WebSerial.printf("Free heap: %u\n", ESP.getFreeHeap());
-  //  WebSerial.printf("Flash Size: %u\n", ESP.getFlashChipSize());
-  //  WebSerial.printf("Total PSRAM: %u\n", ESP.getPsramSize());
-  //  WebSerial.printf("Free PSRAM: %u\n", ESP.getFreePsram());
-
-    delay(1000);
+    vTaskDelay(1); // Pomembno je le, da omogocite FreeRTOS Schedulerju delo
 }
