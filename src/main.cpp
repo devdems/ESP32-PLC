@@ -26,7 +26,6 @@
 // and the majority from uhi22's pyPLC. see https://github.com/uhi22/pyPLC
 //
 // Information on setting up the SLAC communication can be found in ISO 15118-3:2016
-//
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -39,6 +38,8 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
+#include <Update.h> // Library for OTA updates
+
 
 // Key for stored preferences
 const char* PREF_KEY = "secc_config"; 
@@ -77,7 +78,6 @@ uint8_t EVSOC = 0;  // State Of Charge of the EV, obtained from the 'ContractAut
 
 
 void SPI_InterruptHandler() { // Interrupt handler is currently unused
-
     volatile uint16_t rx_data;
 
     // Write zero into the SPI_REG_INTR_ENABLE register
@@ -96,15 +96,11 @@ void SPI_InterruptHandler() { // Interrupt handler is currently unused
     SPI.transfer16(rx_data);   
     digitalWrite(PIN_QCA700X_CS, HIGH);
 
-    
-
-
     // Re-enable Packet Available interrupt
     digitalWrite(PIN_QCA700X_CS, LOW);
     SPI.transfer16(QCA7K_SPI_WRITE | QCA7K_SPI_INTERNAL | SPI_REG_INTR_ENABLE);
     SPI.transfer16(SPI_INT_PKT_AVLBL);   
     digitalWrite(PIN_QCA700X_CS, HIGH);
-
 }
 
 uint16_t qcaspi_read_register16(uint16_t reg) {
@@ -137,7 +133,6 @@ void qcaspi_write_register(uint16_t reg, uint16_t value) {
     SPI.transfer16(tx_data);                // send the command to write the internal register
     SPI.transfer16(value);                  // write the value to the bus
     digitalWrite(PIN_QCA700X_CS, HIGH);
-
 }
 
 void qcaspi_write_burst(uint8_t *src, uint32_t len) {
@@ -145,25 +140,20 @@ void qcaspi_write_burst(uint8_t *src, uint32_t len) {
     uint8_t buf[10];
 
     buf[0] = 0xAA;
-	  buf[1] = 0xAA;
-	  buf[2] = 0xAA;
-	  buf[3] = 0xAA;
-	  buf[4] = (uint8_t)((len >> 0) & 0xFF);
-	  buf[5] = (uint8_t)((len >> 8) & 0xFF);
-	  buf[6] = 0;
-	  buf[7] = 0;
+    buf[1] = 0xAA;
+    buf[2] = 0xAA;
+    buf[3] = 0xAA;
+    buf[4] = (uint8_t)((len >> 0) & 0xFF);
+    buf[5] = (uint8_t)((len >> 8) & 0xFF);
+    buf[6] = 0;
+    buf[7] = 0;
 
     total_len = len + 10;
     // Write nr of bytes to write to SPI_REG_BFR_SIZE
     qcaspi_write_register(SPI_REG_BFR_SIZE, total_len);
-    //WebSerial.printf("Write buffer bytes sent: %u\n", total_len);
-
-//    Serial.print("[TX] ");
-//    for(int x=0; x< len; x++) WebSerial.printf("%02x ",src[x]);
-//    WebSerial.printf("\n");
     
     digitalWrite(PIN_QCA700X_CS, LOW);
-    SPI.transfer16(QCA7K_SPI_WRITE | QCA7K_SPI_EXTERNAL);      // Write External
+    SPI.transfer16(QCA7K_SPI_WRITE | QCA7K_SPI_EXTERNAL);       // Write External
     SPI.transfer(buf, 8);     // Header
     SPI.transfer(src, len);   // Data
     SPI.transfer16(0x5555);   // Footer
@@ -231,8 +221,6 @@ uint16_t getFrameType() {
     return rxbuffer[12]*256 + rxbuffer[13];
 }
 
-
-
 void ModemReset() {
     uint16_t reg16;
     WebSerial.printf("Reset QCA700X Modem. ");
@@ -241,9 +229,7 @@ void ModemReset() {
     qcaspi_write_register(SPI_REG_SPI_CONFIG, reg16);
 }
 
-
 void composeSetKey() {
-    
     memset(txbuffer, 0x00, 60);  // clear buffer
     txbuffer[0]=0x00; // Destination MAC
     txbuffer[1]=0xB0;
@@ -251,7 +237,7 @@ void composeSetKey() {
     txbuffer[3]=0x00;
     txbuffer[4]=0x00;
     txbuffer[5]=0x01;                
-    setMacAt(myMac, 6);  // Source MAC         
+    setMacAt(myMac, 6);  // Source MAC          
     txbuffer[12]=0x88; // Protocol HomeplugAV
     txbuffer[13]=0xE1;
     txbuffer[14]=0x01; // version
@@ -260,24 +246,18 @@ void composeSetKey() {
     txbuffer[17]=0x00; // frag_index
     txbuffer[18]=0x00; // frag_seqnum
     txbuffer[19]=0x01; // 0 key info type
-                     // 20-23 my nonce (0x00 in spec!)
-                     // 24-27 your nonce
     txbuffer[28]=0x04; // 9 nw info pid
-        
     txbuffer[29]=0x00; // 10 info prn
     txbuffer[30]=0x00; // 11
     txbuffer[31]=0x00; // 12 pmn
     txbuffer[32]=0x00; // 13 CCo capability
     setNidAt(33);    // 14-20 nid  7 bytes from 33 to 39
-                     // Network ID to be associated with the key distributed herein.
-                     // The 54 LSBs of this field contain the NID (refer to Section 3.4.3.1). The
-                     // two MSBs shall be set to 0b00.
     txbuffer[40]=0x01; // NewEKS. Table A.8 01 is NMK.
     setNmkAt(41); 
 }
 
 void composeGetSwReq() {
-		// GET_SW.REQ request
+    // GET_SW.REQ request
     memset(txbuffer, 0x00, 60);  // clear buffer
     txbuffer[0]=0xff;  // Destination MAC Broadcast
     txbuffer[1]=0xff;
@@ -285,7 +265,7 @@ void composeGetSwReq() {
     txbuffer[3]=0xff;
     txbuffer[4]=0xff;
     txbuffer[5]=0xff;                
-    setMacAt(myMac, 6);  // Source MAC         
+    setMacAt(myMac, 6);  // Source MAC          
     txbuffer[12]=0x88; // Protocol HomeplugAV
     txbuffer[13]=0xE1;
     txbuffer[14]=0x00; // version
@@ -373,7 +353,7 @@ void composeSlacMatchCnf() {
     setRunId(69);         // runid 8 bytes 69-76 run_id.
                           // 77 to 84 reserved 0
     setNidAt(85);         // 85-91 NID. We can nearly freely choose this, but the upper two bits need to be zero
-                          // 92 reserved 0                                 
+                          // 92 reserved 0                                  
     setNmkAt(93);         // 93 to 108 NMK. We can freely choose this. Normally we should use a random number. 
 }        
 
@@ -386,7 +366,7 @@ void composeFactoryDefaults() {
     txbuffer[3]=0x00;
     txbuffer[4]=0x00;
     txbuffer[5]=0x01;                
-    setMacAt(myMac, 6); // Source MAC         
+    setMacAt(myMac, 6); // Source MAC          
     txbuffer[12]=0x88; // Protocol HomeplugAV
     txbuffer[13]=0xE1;
     txbuffer[14]=0x00; // version
@@ -624,14 +604,14 @@ void Timer20ms(void * parameter) {
                 
                 sendSocCallback(
                     (float)EVSOC,        
-                    0.0,                 
-                    0.0,                 
-                    0.0,                 
-                    evccid_str           
+                    0.0,                  
+                    0.0,                  
+                    0.0,                  
+                    evccid_str            
                 );
                 
-                // Prehod v naslednje stanje V2G (pomembno za preprečitev ponovnih klicev)
-                modem_state = MODEM_V2G_INIT; // To stanje morate definirati v main.h
+                // Transition to next V2G state (important to prevent repeated calls)
+                modem_state = MODEM_V2G_INIT; 
             } else {
                 WebSerial.printf("(re)transmitting MODEM_GET_SW.REQ\n");
                 modem_state = MODEM_GET_SW_REQ;
@@ -711,9 +691,9 @@ void setup() {
 
     pinMode(PIN_QCA700X_CS, OUTPUT);           // SPI_CS QCA7005 
     pinMode(PIN_QCA700X_INT, INPUT);           // SPI_INT QCA7005 
-    pinMode(SPI_SCK, OUTPUT);     
-    pinMode(SPI_MISO, INPUT);     
-    pinMode(SPI_MOSI, OUTPUT);     
+    pinMode(SPI_SCK, OUTPUT);      
+    pinMode(SPI_MISO, INPUT);      
+    pinMode(SPI_MOSI, OUTPUT);      
 
     digitalWrite(PIN_QCA700X_CS, HIGH); 
 
@@ -736,8 +716,8 @@ void setup() {
             [](AsyncWebServerRequest *request){ 
                 if (request->hasArg("url")) {
                     String newUrl = request->arg("url");
-                    saveConfiguration(newUrl); // Funkcija, ki shrani URL
-                    request->redirect("/config"); // Preusmeritev
+                    saveConfiguration(newUrl); // Function that saves the URL
+                    request->redirect("/config"); // Redirect
                 } else {
                     request->send(400, "text/plain", "Missing 'url' parameter.");
                 }
@@ -746,6 +726,54 @@ void setup() {
     }
     WebSerial.begin(&server, "/webserial");
 
+    // --- OTA UPDATE ---
+    
+    // 1. Web form for file selection
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
+        String html = "<h2>OTA Update</h2>"
+                      "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                      "<input type='file' name='update'><br><br>"
+                      "<input type='submit' value='Update Firmware'>"
+                      "</form>";
+        request->send(200, "text/html", html);
+    });
+
+    // 2. Handle file upload
+    server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
+        // End of upload
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", (Update.hasError())?"FAIL":"OK. Restarting...");
+        response->addHeader("Connection", "close");
+        request->send(response);
+        
+        delay(100);
+        ESP.restart();
+    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+        // Current upload
+        if(!index){
+            WebSerial.printf("OTA: Receive Start: %s\n", filename.c_str());
+            
+            // If size is unknown, use U_FLASH
+            if(!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)){ 
+                Update.printError(WebSerial.print);
+            }
+        }
+
+        if(len){
+            if(Update.write(data, len) != len){
+                Update.printError(WebSerial.print);
+            }
+        }
+
+        if(final){
+            if(Update.end(true)){ 
+                WebSerial.printf("OTA: Successful: %u bytes\n", index+len);
+            } else {
+                Update.printError(WebSerial.print);
+            }
+        }
+    });
+
+    // 3. Start server AT THE END of configuration
     server.begin(); 
     WebSerial.println("Web server started on port 80.");
     
@@ -769,5 +797,5 @@ void setup() {
 
 void loop() {
 
-    vTaskDelay(1); // Pomembno je le, da omogocite FreeRTOS Schedulerju delo
+    vTaskDelay(1); // It is only important to allow the FreeRTOS Scheduler to work
 }
