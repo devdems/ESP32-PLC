@@ -484,8 +484,7 @@ void sendSocCallback(float current_soc, float full_soc, float energy_capacity, f
         WebSerial.println("WiFi not connected or Callback URL not set. Skipping SOC callback.");
         return;
     }
-
-    // Construct the query parameters string exactly as in pyPLC
+LC
     String query = "?current_soc=" + String(current_soc, 1);
     query += "&full_soc=" + String(full_soc, 1);
     query += "&energy_capacity=" + String(energy_capacity, 1);
