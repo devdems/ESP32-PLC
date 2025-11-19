@@ -315,11 +315,41 @@ void decodeV2GTP(void) {
         if (dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq_isUsed) {
 
             WebSerial.printf("ChargeParameterDiscoveryRequest\n");
+			
+			// Current SoC (State of Charge)
+			EVSOC = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVRESSSOC;
+			
+			// Target SoC
+			uint8_t full_soc = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVTargetSOC;
+			
+			
+			// Energy Request
+			int8_t req_mult = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVEnergyRequest.Multiplier;
+			int16_t req_value = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVEnergyRequest.Value;
+			float energy_request = (float)req_value * pow(10, req_mult);
+			
+			
+			// Energy Capacity
+			int8_t cap_mult = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVMaxEnergy.Multiplier;
+			int16_t cap_value = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVMaxEnergy.Value;
+			float energy_capacity = (float)cap_value * pow(10, cap_mult);
+			
 
-            // Read the SOC from the EVRESSOC data
-            EVSOC = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVRESSSOC;
-
-            WebSerial.printf("Current SoC %d%\n", EVSOC);
+			WebSerial.printf("Current SoC %d%%\n", EVSOC);
+			WebSerial.printf("Target SoC %d%%\n", full_soc);
+			WebSerial.printf("Energy Request: %.0f Wh\n", energy_request);
+			WebSerial.printf("Energy Capacity: %.0f Wh\n", energy_capacity);
+			
+			String evccid_string = macArrayToString(EVCCID);
+        
+			sendSocCallback(
+				(float)EVSOC,           // Current SoC (uint8_t -> float)
+				(float)full_soc,        // Target SoC (uint8_t -> float)
+				energy_capacity,        // Energy Capacity (float)
+				energy_request,         // Energy Request (float)
+				evccid_string           // EVCCID String
+			);
+						
 
             // Now prepare the 'ChargeParameterDiscoveryResponse' message to send back to the EV
             projectExiConnector_prepare_DinExiDocument();
