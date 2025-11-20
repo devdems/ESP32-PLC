@@ -1,9 +1,9 @@
 // Pin definitions
 #define PIN_QCA700X_INT 9             // SPI connections to QCA7000X
-#define PIN_QCA700X_CS 34
-#define SPI_MOSI 35
-#define SPI_MISO 37
-#define SPI_SCK 36
+#define PIN_QCA700X_CS 10
+#define SPI_MOSI 11
+#define SPI_MISO 12
+#define SPI_SCK 13
 
 /*====================================================================*
  *   SPI registers QCA700X
@@ -107,5 +107,9 @@ extern uint8_t myMac[];
 extern uint8_t pevMac[];
 extern uint8_t EVCCID[];
 extern uint8_t EVSOC;
+
+void sendSocCallback(float current_soc, float full_soc, float energy_capacity, float energy_request, const String& evccid);
+String macArrayToString(const uint8_t mac[6]); 
+
 void qcaspi_write_burst(uint8_t *src, uint32_t len);
 void setMacAt(uint8_t *mac, uint16_t offset);

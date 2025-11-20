@@ -30,7 +30,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Preferences.h>
-
+#include <StreamString.h>
 #include <DNSServer.h> 
 #include <WebServer.h>
 #include <WiFiManager.h>
@@ -38,7 +38,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
-#include <Update.h> // Library for OTA updates
+#include <Update.h> 
 
 
 // Key for stored preferences
@@ -620,7 +620,8 @@ void Timer20ms(void * parameter) {
 
 
         // Pause the task for 20ms
-        vTaskDelay(20 / portTICK_PERIOD_MS);
+        //vTaskDelay(20 / portTICK_PERIOD_MS);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
 
     } // while(1)
 }  
@@ -678,7 +679,7 @@ void handleConfigPage(AsyncWebServerRequest *request) {
     html += "<p>Current URL: <span class=\"current\">" + soc_callback_url + "</span></p>";
     
     html += "<form method='POST' action='/save'>";
-    html += "Callback URL (SmartEVSE/pyPLC):<br>";
+    html += "Callback URL (SmartEVSE):<br>";
     html += "<input type='text' name='url' value='" + soc_callback_url + "' placeholder='e.g., http://192.168.1.100/ev_state'><br>";
     html += "<button type='submit'>Save Configuration</button>";
     html += "</form>";
@@ -688,6 +689,8 @@ void handleConfigPage(AsyncWebServerRequest *request) {
 }
 
 void setup() {
+
+    delay(500);
 
     pinMode(PIN_QCA700X_CS, OUTPUT);           // SPI_CS QCA7005 
     pinMode(PIN_QCA700X_INT, INPUT);           // SPI_INT QCA7005 
@@ -703,7 +706,8 @@ void setup() {
     SPI.beginTransaction(SPISettings(10000000, MSBFIRST, SPI_MODE3));
     //attachInterrupt(digitalPinToInterrupt(PIN_QCA700X_INT), SPI_InterruptHandler, RISING);
 
-    Serial.begin();
+    Serial.begin(115200);
+    while(!Serial) { delay(10); } // za USB CDC, če je potrebno
     Serial.printf("\npowerup\n");
 
     wifi_setup_manager();
@@ -754,13 +758,27 @@ void setup() {
             
             // If size is unknown, use U_FLASH
             if(!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)){ 
-                Update.printError(WebSerial.print);
+                StreamString errorString;
+                Update.printError(errorString); // Pass the StreamString object by reference
+
+                // Now print the captured string to WebSerial and Serial
+                WebSerial.print("OTA Update Error: ");
+                WebSerial.println(errorString);
+                Serial.print("OTA Update Error: ");
+                Serial.println(errorString);
             }
         }
 
         if(len){
             if(Update.write(data, len) != len){
-                Update.printError(WebSerial.print);
+                StreamString errorString;
+                Update.printError(errorString); // Pass the StreamString object by reference
+
+                // Now print the captured string to WebSerial and Serial
+                WebSerial.print("OTA Update Error: ");
+                WebSerial.println(errorString);
+                Serial.print("OTA Update Error: ");
+                Serial.println(errorString);
             }
         }
 
@@ -768,7 +786,14 @@ void setup() {
             if(Update.end(true)){ 
                 WebSerial.printf("OTA: Successful: %u bytes\n", index+len);
             } else {
-                Update.printError(WebSerial.print);
+                StreamString errorString;
+                Update.printError(errorString); // Pass the StreamString object by reference
+
+                // Now print the captured string to WebSerial and Serial
+                WebSerial.print("OTA Update Error: ");
+                WebSerial.println(errorString);
+                Serial.print("OTA Update Error: ");
+                Serial.println(errorString);
             }
         }
     });
@@ -796,6 +821,8 @@ void setup() {
 }
 
 void loop() {
+
+    //delay(1000);
 
     vTaskDelay(1); // It is only important to allow the FreeRTOS Scheduler to work
 }

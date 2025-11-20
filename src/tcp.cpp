@@ -55,8 +55,6 @@ uint8_t tcp_rxdata[TCP_RX_DATA_LEN];
 
 uint8_t fsmState = stateWaitForSupportedApplicationProtocolRequest;
 
-
-
 void routeDecoderInputData(void) {
     /* connect the data from the TCP to the exiDecoder */
     /* The TCP receive data consists of two parts: 1. The V2GTP header and 2. the EXI stream.
@@ -320,7 +318,7 @@ void decodeV2GTP(void) {
 			EVSOC = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVRESSSOC;
 			
 			// Target SoC
-			uint8_t full_soc = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.DC_EVStatus.EVTargetSOC;
+			uint8_t full_soc = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.FullSOC;
 			
 			
 			// Energy Request
@@ -330,8 +328,8 @@ void decodeV2GTP(void) {
 			
 			
 			// Energy Capacity
-			int8_t cap_mult = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVMaxEnergy.Multiplier;
-			int16_t cap_value = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVMaxEnergy.Value;
+			int8_t cap_mult = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVEnergyCapacity.Multiplier;
+			int16_t cap_value = dinDocDec.V2G_Message.Body.ChargeParameterDiscoveryReq.DC_EVChargeParameter.EVEnergyCapacity.Value;
 			float energy_capacity = (float)cap_value * pow(10, cap_mult);
 			
 
@@ -349,8 +347,6 @@ void decodeV2GTP(void) {
 				energy_request,         // Energy Request (float)
 				evccid_string           // EVCCID String
 			);
-						
-
             // Now prepare the 'ChargeParameterDiscoveryResponse' message to send back to the EV
             projectExiConnector_prepare_DinExiDocument();
             
