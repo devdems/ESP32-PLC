@@ -2,7 +2,7 @@
 
 **Platform:** ESP32-S3
 
-A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** modem, primarily to read the State of Charge (SoC) and manage charging parameters of an electric vehicle (EV).
+A project utilising the ESP32-S3 to communicate with a **Qualcomm QCA7005** modem, primarily to read the State of Charge (SoC) and manage charging parameters of an electric vehicle (EV).
 
 ---
 
@@ -52,7 +52,7 @@ This project implements a comprehensive communication stack, including PLC, IPv6
 -   **SLAC (HomePlug) Protocol:**
     -   Handles key management: `SET_KEY.REQ`, `SET_KEY.CNF`.
     -   Handles SLAC parameters: `CM_SLAC_PARAM.REQ`.
-    -   **Attenuation Measurement:** `SOUNDS` are received from the PEV (car), average attenuation level is calculated, and sent back in `CM_ATTEN_CHAR.IND`.
+    -   **Attenuation Measurement:** `SOUNDS` are received from the PEV (car), the average attenuation level is calculated, and sent back in `CM_ATTEN_CHAR.IND`.
     -   **SLAC Complete:** All Homeplug stuff done.
 -   **Networking:**
     -   `SDP` request/response done.
@@ -61,9 +61,9 @@ This project implements a comprehensive communication stack, including PLC, IPv6
 -   **Application Layer (V2G/EXI):**
     -   `TCP` connection from the car to the EVSE is set up.
     -   Car starts sending EXI encoded messages over TCP.
-    -   First EXI encoded message is decoded, and tells us what charging options the car supports (currently supporting DIN).
+    -   The first EXI encoded message is decoded, and tells us what charging options the car supports (currently supporting DIN).
     -   **Checkpoint 403:** Schema negotiated.
-    -   Up to **'ChargeParameterDiscoveryRequest'** which allows us to read the SoC of the car.
+    -   Up to **'ChargeParameterDiscoveryRequest'**, which allows us to read the SoC of the car.
 
 ---
 
@@ -82,7 +82,7 @@ The device now includes a full Web Management Interface for easy deployment and 
 
 ### ⚙️ SmartEVSE REST API Integration
 -   Implements an **API Endpoint** to communicate the read SoC back to a control system.
--   The `sendSocCallback()` function is utilized to send a POST request with the car's SoC data to a **SmartEVSE-compatible REST endpoint** (e.g., `/api/setSoc`).
+-   The `sendSocCallback()` function is utilised to send a POST request with the car's SoC data to a **SmartEVSE-compatible REST endpoint** (e.g., `/api/setSoc`).
 -   This enables seamless integration with systems that require real-time charge status.
 
 ---
