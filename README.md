@@ -36,7 +36,7 @@ This diagram shows the pin arrangement and wiring scheme on the Yellow Beet boar
 
 #### Deployment Example
 
-An example photograph of connected components, showing a typical deployment or testing setup.
+An example photograph of connected components, showing a typical deployment or testing setup with RPi instead of ESP32.
 
 ![Yellow Beet Deployment Example](img/yellow_beet_deployment.jpeg)
 
