@@ -6,6 +6,42 @@ A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** Home
 
 ---
 
+## ⚙️ Hardware & Connection Details (New Section)
+
+### 📌 Pinout and Wiring
+
+Details on connecting the **ESP32-S3** to the **QCA7005** modem using the **SPI** interface. All pin assignments are defined in `main.h`.
+
+| ESP32-S3 Function | Pin Definition | ESP32-S3 Pin (GPIO) | QCA7005 Signal | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Interrupt** | `PIN_QCA700X_INT` | **9** | `INT` | Modem status/event signaling |
+| **Chip Select** | `PIN_QCA700X_CS` | **10** | `CS` | SPI Chip Select |
+| **MOSI** | `SPI_MOSI` | **11** | `MOSI` | SPI Master Out, Slave In |
+| **MISO** | `SPI_MISO` | **12** | `MISO` | SPI Master In, Slave Out |
+| **SCK** | `SPI_SCK` | **13** | `SCK` | SPI Clock |
+| **Power** | N/A | `3V3` | `VCC` | Power supply for the modem |
+| **Ground** | N/A | `GND` | `GND` | Common ground |
+
+*Please consult the project schematics in the `/img` folder for precise wiring and any necessary level-shifting or decoupling components.*
+
+### 🖼️ Connection Diagrams
+
+Here you can find schematics and connection diagrams for integrating the ESP32-PLC device with the QCA7005 modem and the charging station (EVSE).
+
+#### Connection Overview
+
+A simplified view of the physical connections between the ESP32-S3 and the QCA7005.
+
+![Connection Diagram](img/connection_diagram.png)
+
+#### PCB Schematic (v1.0)
+
+For detailed electronic information, refer to the full PDF schematic.
+
+[Download PCB Schematic (v1.0)](img/pcb_v1_schematic.pdf)
+
+---
+
 ## ✨ Key Features & Functionality
 
 This project implements a comprehensive communication stack, including PLC, IPv6, and application layers, and adds a robust Web Interface for configuration and firmware management.
@@ -31,7 +67,7 @@ This project implements a comprehensive communication stack, including PLC, IPv6
 
 ---
 
-## 🌐 Web & Management Interface (New Features)
+## 🌐 Web & Management Interface
 
 The device now includes a full Web Management Interface for easy deployment and maintenance.
 
