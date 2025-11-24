@@ -6,7 +6,7 @@ A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** Home
 
 ---
 
-## ⚙️ Hardware & Connection Details (New Section)
+## ⚙️ Hardware & Connection Details
 
 ### 📌 Pinout and Wiring
 
@@ -26,19 +26,19 @@ Details on connecting the **ESP32-S3** to the **QCA7005** modem using the **SPI*
 
 ### 🖼️ Connection Diagrams
 
-Here you can find schematics and connection diagrams for integrating the ESP32-PLC device with the QCA7005 modem and the charging station (EVSE).
+Here you can find schematics and photos illustrating the connection process, likely using the **Yellow Beet** board setup.
 
-#### Connection Overview
+#### Yellow Beet Wiring Diagram
 
-A simplified view of the physical connections between the ESP32-S3 and the QCA7005.
+This diagram shows the pin arrangement and wiring scheme on the Yellow Beet board for connecting to the modem and other peripherals.
 
-![Connection Diagram](img/connection_diagram.png)
+![Yellow Beet Wiring](img/yellow_beet_wiring.jpg)
 
-#### PCB Schematic (v1.0)
+#### Deployment Example
 
-For detailed electronic information, refer to the full PDF schematic.
+An example photograph of connected components, showing a typical deployment or testing setup.
 
-[Download PCB Schematic (v1.0)](img/pcb_v1_schematic.pdf)
+![Yellow Beet Deployment Example](img/yellow_beet_deployment.jpeg)
 
 ---
 
