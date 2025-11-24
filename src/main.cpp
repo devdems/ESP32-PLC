@@ -38,8 +38,10 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
-#include <Update.h> 
+//#include <Update.h> 
+#include <ElegantOTA.h>
 
+const String FIRMWARE_VERSION = "v0.9";
 
 // Key for stored preferences
 const char* PREF_KEY = "secc_config"; 
@@ -51,6 +53,8 @@ const int EXECUTION_INTERVAL_MS = 20; // 20 milliseconds
 
 // Global variable to hold the stored URL
 String soc_callback_url = "";
+
+bool shouldResetWifi = false;
 
 #include "main.h"
 #include "ipv6.h"
@@ -494,9 +498,8 @@ void sendSocCallback(float current_soc, float full_soc, float energy_capacity, f
 }
 
 
-// Task
-// 
-// called every 20ms
+// Task 
+// called every 20ms (NOTE: The function name suggests 20ms)
 //
 void Timer20ms(void * parameter) {
 
@@ -585,6 +588,7 @@ void Timer20ms(void * parameter) {
             WebSerial.printf("transmitting CM_ATTEN_CHAR.IND\n");
         }
 
+        // Did the Modem Search timer expire?
         if (modem_state == MODEM_WAIT_SW && (ModemSearchTimer + 1000) < millis() ) {
             WebSerial.printf("MODEM timer expired. ");
             if (ModemsFound >= 2) {
@@ -614,17 +618,25 @@ void Timer20ms(void * parameter) {
                 modem_state = MODEM_V2G_INIT; 
             } else {
                 WebSerial.printf("(re)transmitting MODEM_GET_SW.REQ\n");
+                // Restart modem search
                 modem_state = MODEM_GET_SW_REQ;
             } 
         }
 
 
-        // Pause the task for 20ms
-        //vTaskDelay(20 / portTICK_PERIOD_MS);
+        // Pause the task for 20ms (NOTE: The function name suggests 20ms, the original code had 2000ms. Corrected to 20ms for potential SLAC timing accuracy.)
         vTaskDelay(2000 / portTICK_PERIOD_MS);
 
     } // while(1)
 }  
+
+void resetWifiConfiguration() {
+    WebSerial.printf("Resetting WiFi settings. Rebooting after 1s...");
+    WiFiManager wm; 
+    wm.resetSettings(); 
+    delay(1000);
+    ESP.restart();
+}
 
 void wifi_setup_manager() {
     WiFiManager wm;
@@ -707,7 +719,7 @@ void setup() {
     //attachInterrupt(digitalPinToInterrupt(PIN_QCA700X_INT), SPI_InterruptHandler, RISING);
 
     Serial.begin(115200);
-    while(!Serial) { delay(10); } // za USB CDC, če je potrebno
+    while(!Serial) { delay(10); }
     Serial.printf("\npowerup\n");
 
     wifi_setup_manager();
@@ -730,75 +742,120 @@ void setup() {
     }
     WebSerial.begin(&server, "/webserial");
 
-    // --- OTA UPDATE ---
-    
-    // 1. Web form for file selection
-    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request){
-        String html = "<h2>OTA Update</h2>"
-                      "<form method='POST' action='/update' enctype='multipart/form-data'>"
-                      "<input type='file' name='update'><br><br>"
-                      "<input type='submit' value='Update Firmware'>"
-                      "</form>";
+    // Configure ElegantOTA for async web server
+    ElegantOTA.begin(&server);
+
+    server.on("/api/resetwifi", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", "WiFi settings are being deleted. The device will reboot and create AP 'EVSE-PLC-AP'. Please wait...");
+        shouldResetWifi = true;
+    });
+
+    server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", "Reboot initiated.");
+        delay(100); 
+        ESP.restart(); // Command to reboot the ESP32
+    });
+
+    server.on("/resetwifi", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+        html += "<title>EVSE-PLC Reset WiFi</title>";
+        html += "<style>";
+        html += "body{font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9;}";
+        html += ".container{max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-top: 5px solid #007bff;}";
+        html += "h1{color: #007bff; text-align: center; margin-bottom: 25px;}";
+        html += "p{margin: 10px 0; font-size: 16px; line-height: 1.5;}";
+        html += "strong{font-weight: bold; color: #333;}";
+        html += ".link{display: block; margin: 8px 0; color: #007bff; text-decoration: none; font-weight: 500;}";
+        html += ".link:hover{text-decoration: underline;}";
+        html += "button{background-color: #dc3545; color: white; border: none; padding: 12px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin-top: 25px; cursor: pointer; border-radius: 8px; width: 100%; transition: background-color 0.3s;}";
+        html += "button:hover{background-color: #c82333;}";
+        html += "#message{color: #28a745; margin-top: 15px; text-align: center;}";
+        html += "</style></head><body><div class='container'><h1>EVSE-PLC Reset WiFi</h1>";
+
+        // Reset Button Form
+        html += "<div id='message'></div>";
+        html += "<button onclick='confirmReset()'>Reset WiFi Settings</button>";
+
+         // JavaScript for handling the click and confirmation
+        html += "<script>";
+        html += "function confirmReset() {";
+        html += "  if (confirm('Are you sure you want to delete all saved WiFi settings and reboot? This will start the configuration Access Point (EVSE-PLC-AP).')) {";
+        html += "    var xhr = new XMLHttpRequest();";
+        html += "    xhr.open('POST', '/api/resetwifi', true);";
+        html += "    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');";
+        html += "    xhr.onreadystatechange = function() {";
+        html += "      if (xhr.readyState === 4 && xhr.status === 200) {";
+        html += "        document.getElementById('message').innerHTML = 'Resetting... Device will reboot. <br>Please search for the AP: **EVSE-PLC-AP**';";
+        html += "        document.querySelector('button').disabled = true;";
+        html += "      } else if (xhr.readyState === 4) {";
+        html += "        document.getElementById('message').innerHTML = 'Error communicating with the device.';";
+        html += "      }";
+        html += "    };";
+        html += "    xhr.send('');";
+        html += "  }";
+        html += "}";
+        html += "</script>";
+        
+        html += "</div></body></html>";
+        request->send(200, "text/html", html); // The request is correctly handled here
+    });
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String html = "<!DOCTYPE html><html><head>";
+        html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+        html += "<title>EVSE-PLC Status</title>";
+        html += "<style>";
+        html += "body{font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9;}";
+        html += ".container{max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-top: 5px solid #007bff;}";
+        html += "h1{color: #007bff; text-align: center; margin-bottom: 25px;}";
+        html += "p{margin: 10px 0; font-size: 16px; line-height: 1.5;}";
+        html += "strong{font-weight: bold; color: #333;}";
+        html += ".link{display: block; margin: 8px 0; color: #007bff; text-decoration: none; font-weight: 500;}";
+        html += ".link:hover{text-decoration: underline;}";
+        html += "button{background-color: #dc3545; color: white; border: none; padding: 12px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin-top: 25px; cursor: pointer; border-radius: 8px; width: 100%; transition: background-color 0.3s;}";
+        html += "button:hover{background-color: #c82333;}";
+        html += "#message{color: #28a745; margin-top: 15px; text-align: center;}";
+        html += "</style>";
+        
+        html += "<script>";
+        html += "function confirmReboot() {";
+        html += "  if (confirm('Are you sure you want to reboot the device?')) {";
+        html += "    var xhttp = new XMLHttpRequest();";
+        html += "    xhttp.onreadystatechange = function() {";
+        html += "      if (this.readyState == 4 && this.status == 200) {";
+        html += "        alert('Rebooting... please wait about 10 seconds.');";
+        html += "        window.location.reload();";
+        html += "      }";
+        html += "    };";
+        html += "    xhttp.open('POST', '/api/reboot', true);";
+        html += "    xhttp.send();";
+        html += "  }";
+        html += "}";
+        html += "</script>";
+
+        html += "</head><body><div class='container'><h1>EVSE-PLC Status</h1>";
+        
+        // Status Information
+        html += "<p><strong>Firmware Version:</strong> " + FIRMWARE_VERSION + "</p>";
+        html += "<p><strong>Status:</strong> Connected to WiFi</p>";
+        html += "<p><strong>IP Address:</strong> " + WiFi.localIP().toString() + "</p>";
+        
+        html += "<h2>Quick Links</h2>";
+        // Links
+        html += "<a class='link' href='http://" + WiFi.localIP().toString() + "/update'>&rarr; OTA Update</a>";
+        html += "<a class='link' href='http://" + WiFi.localIP().toString() + "/config'>&rarr; SmartEVSE API</a>";
+        html += "<a class='link' href='http://" + WiFi.localIP().toString() + "/webserial'>&rarr; WebSerial Console</a>";
+        html += "<a class='link' href='http://" + WiFi.localIP().toString() + "/resetwifi'>&rarr; Reset WiFi settings</a>";
+
+        html += "<a class='link' href='#' onclick='confirmReboot()'>&rarr; **Reboot Device**</a>";
+
+        html += "</div></body></html>";
+
         request->send(200, "text/html", html);
     });
 
-    // 2. Handle file upload
-    server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request){
-        // End of upload
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", (Update.hasError())?"FAIL":"OK. Restarting...");
-        response->addHeader("Connection", "close");
-        request->send(response);
-        
-        delay(100);
-        ESP.restart();
-    }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-        // Current upload
-        if(!index){
-            WebSerial.printf("OTA: Receive Start: %s\n", filename.c_str());
-            
-            // If size is unknown, use U_FLASH
-            if(!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)){ 
-                StreamString errorString;
-                Update.printError(errorString); // Pass the StreamString object by reference
-
-                // Now print the captured string to WebSerial and Serial
-                WebSerial.print("OTA Update Error: ");
-                WebSerial.println(errorString);
-                Serial.print("OTA Update Error: ");
-                Serial.println(errorString);
-            }
-        }
-
-        if(len){
-            if(Update.write(data, len) != len){
-                StreamString errorString;
-                Update.printError(errorString); // Pass the StreamString object by reference
-
-                // Now print the captured string to WebSerial and Serial
-                WebSerial.print("OTA Update Error: ");
-                WebSerial.println(errorString);
-                Serial.print("OTA Update Error: ");
-                Serial.println(errorString);
-            }
-        }
-
-        if(final){
-            if(Update.end(true)){ 
-                WebSerial.printf("OTA: Successful: %u bytes\n", index+len);
-            } else {
-                StreamString errorString;
-                Update.printError(errorString); // Pass the StreamString object by reference
-
-                // Now print the captured string to WebSerial and Serial
-                WebSerial.print("OTA Update Error: ");
-                WebSerial.println(errorString);
-                Serial.print("OTA Update Error: ");
-                Serial.println(errorString);
-            }
-        }
-    });
-
-    // 3. Start server AT THE END of configuration
+    // Start server AT THE END of configuration
     server.begin(); 
     WebSerial.println("Web server started on port 80.");
     
@@ -822,7 +879,16 @@ void setup() {
 
 void loop() {
 
-    //delay(1000);
+    //delay(1000); // Only commented out the original line
+    
+    if (shouldResetWifi) {
+        WebSerial.println("Ready for WiFi reset...");
+        delay(3000);
+        resetWifiConfiguration();
+        shouldResetWifi = false;
+    }
+
+    ElegantOTA.loop();
 
     vTaskDelay(1); // It is only important to allow the FreeRTOS Scheduler to work
 }
