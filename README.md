@@ -10,7 +10,7 @@ A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** Home
 
 ### 📌 Pinout and Wiring
 
-Details on connecting the **ESP32-S3** to the **QCA7005** modem using the **SPI** interface. All pin assignments are defined in `main.h`.
+Details on connecting the **ESP32-S3 (esp32-s3-n16r8)** to the **QCA7005** modem using the **SPI** interface. All pin assignments are defined in `main.h`.
 
 | ESP32-S3 Function | Pin Definition | ESP32-S3 Pin (GPIO) | QCA7005 Signal | Notes |
 | :--- | :--- | :--- | :--- | :--- |
