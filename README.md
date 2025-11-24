@@ -2,7 +2,7 @@
 
 **Platform:** ESP32-S3
 
-A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** HomePlug Green PHY modem, primarily to read the State of Charge (SoC) and manage charging parameters of an electric vehicle (EV).
+A project utilizing the ESP32-S3 to communicate with a **Qualcomm QCA7005** modem, primarily to read the State of Charge (SoC) and manage charging parameters of an electric vehicle (EV).
 
 ---
 
